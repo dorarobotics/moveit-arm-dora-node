@@ -219,6 +219,37 @@ class MoveItArmNode:
             return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
         return {"ok": True, "code": "0"}
 
+    def install_scene_verbs(self) -> None:
+        """Register scene manipulation verbs."""
+        if self._bridge is None:
+            if not self.robot_config_module:
+                raise ValueError("robot_config_module required to build RealMoveItBridge")
+            self._bridge = RealMoveItBridge(robot_config_module=self.robot_config_module)
+        self.register_verb(
+            "vendor.moveit.arm.scene.add_collision", self._verb_scene_add_collision
+        )
+        self.register_verb("vendor.moveit.arm.scene.clear", self._verb_scene_clear)
+
+    def _verb_scene_add_collision(
+        self, *, object: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        if object is None:
+            return {"ok": False, "code": "INVALID_PARAMS", "msg": "object is required"}
+        try:
+            assert self._bridge is not None
+            self._bridge.add_collision(object)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
+    def _verb_scene_clear(self) -> dict[str, Any]:
+        try:
+            assert self._bridge is not None
+            self._bridge.clear_scene()
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
     def install_gripper_verbs(self) -> None:
         """Register gripper control verbs."""
         if self._gripper is None:
