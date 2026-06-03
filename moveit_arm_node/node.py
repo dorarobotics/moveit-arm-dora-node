@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from moveit_arm_node._watchdog import HeartbeatWatchdog
 from moveit_arm_node.controller_guard import ControllerGuard
+from moveit_arm_node.moveit_bridge import MoveItBridge, RealMoveItBridge
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class MoveItArmNode:
         robot_config_module: str | None = None,
         gripper_driver: str = "noop",
         heartbeat_timeout_ms: int = 1000,
+        moveit_bridge: MoveItBridge | None = None,
     ) -> None:
         self.robot_id = robot_id
         self.robot_config_module = robot_config_module
@@ -29,6 +31,7 @@ class MoveItArmNode:
         self.is_estopped: bool = False
         self.estop_reason: str | None = None
         self._guard = ControllerGuard()
+        self._bridge = moveit_bridge
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -83,3 +86,131 @@ class MoveItArmNode:
                 "streams": ["state", "capabilities", "safety_event"],
             },
         }
+
+    def install_motion_verbs(self) -> None:
+        """Register motion planning and execution verbs."""
+        if self._bridge is None:
+            if not self.robot_config_module:
+                raise ValueError("robot_config_module required to build RealMoveItBridge")
+            self._bridge = RealMoveItBridge(robot_config_module=self.robot_config_module)
+        self.register_verb(
+            "vendor.moveit.arm.move_to_joint_state", self._verb_move_to_joint_state
+        )
+        self.register_verb("vendor.moveit.arm.move_to_pose", self._verb_move_to_pose)
+        self.register_verb("vendor.moveit.arm.move_to_named", self._verb_move_to_named)
+        self.register_verb("vendor.moveit.arm.plan", self._verb_plan)
+        self.register_verb("vendor.moveit.arm.execute", self._verb_execute)
+
+    def _verb_move_to_joint_state(
+        self, *, joints: list[float], control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if len(joints) != 6:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": f"joints must have length 6, got {len(joints)}",
+            }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        try:
+            assert self._bridge is not None
+            self._bridge.move_to_joint_state(joints)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
+    def _verb_move_to_pose(
+        self, *, pose: dict[str, Any], control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if not isinstance(pose, dict) or "position" not in pose or "orientation" not in pose:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": "pose must include `position` (xyz) and `orientation` (xyzw)",
+            }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        try:
+            assert self._bridge is not None
+            self._bridge.move_to_pose(pose)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
+    def _verb_move_to_named(
+        self, *, name: str, control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if not name:
+            return {"ok": False, "code": "INVALID_PARAMS", "msg": "name must be non-empty"}
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        try:
+            assert self._bridge is not None
+            self._bridge.move_to_named(name)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
+    def _verb_plan(self, *, target: dict[str, Any]) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        try:
+            assert self._bridge is not None
+            traj = self._bridge.plan(target)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0", "data": {"trajectory": traj}}
+
+    def _verb_execute(
+        self, *, trajectory: dict[str, Any] | None = None, control_source: str = ""
+    ) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if trajectory is None:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": "trajectory is required",
+            }
+        try:
+            self._guard.acquire(control_source)
+        except Exception as e:
+            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        try:
+            assert self._bridge is not None
+            self._bridge.execute(trajectory)
+        except RuntimeError as e:
+            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
