@@ -36,6 +36,7 @@ class MoveItArmNode:
         self._guard = ControllerGuard()
         self._bridge = moveit_bridge
         self._gripper = gripper
+        self._safety_events: list[dict[str, Any]] = []
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -63,12 +64,13 @@ class MoveItArmNode:
         return {"ok": True, "code": "0"}
 
     def _on_heartbeat_timeout(self, _t: float) -> None:
-        # Emitted as safety_event in Task 20; for now, log only.
         logger.warning("heartbeat timeout on %s", self.robot_id)
+        self._safety_events.append({"kind": "heartbeat_timeout", "robot_id": self.robot_id})
 
     def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
         self.is_estopped = True
         self.estop_reason = reason
+        self._safety_events.append({"kind": "estop", "reason": reason})
         # Cancel any in-flight motion in Task 11 onward when motion verbs are added.
         return {"ok": True, "code": "0"}
 
@@ -326,3 +328,9 @@ class MoveItArmNode:
             "estop_reason": self.estop_reason,
             "controller_holder": self._guard.holder,
         }
+
+    def drain_safety_events(self) -> list[dict[str, Any]]:
+        """Drain and clear the safety event queue."""
+        out = list(self._safety_events)
+        self._safety_events.clear()
+        return out
