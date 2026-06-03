@@ -4,6 +4,9 @@ class_path: moveit_arm_node.node:MoveItArmNode
 spec_version: "1.0.0"
 vendor: moveit
 model: arm
+# Inputs/outputs mirror dora-moveit2's user_node interface (which moveit_arm_node
+# replaces) since MoveGroup shares this node and drives those topics, plus the
+# SPEC bridge topics and the gripper.
 inputs:
   - cmd_request
   - joint_positions
@@ -12,6 +15,7 @@ inputs:
   - ik_solution
   - ik_status
   - execution_status
+  - command_result
 outputs:
   - cmd_response
   - capabilities
@@ -19,6 +23,8 @@ outputs:
   - safety_event
   - plan_request
   - ik_request
+  - scene_command
+  - cartesian_trajectory
   - gripper_command
 config:
   gripper_driver: "mujoco"
