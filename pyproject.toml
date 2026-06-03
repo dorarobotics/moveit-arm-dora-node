@@ -17,7 +17,7 @@ dependencies = [
 # Runtime planning backend. Required to actually drive an arm (RealMoveItBridge),
 # but NOT for unit tests (which use FakeMoveItBridge) or Mode C type imports — so
 # it lives in an extra to keep the base install and CI light.
-runtime = ["dora-moveit2 @ git+https://github.com/bobdingAI/dora-moveit2@master"]
+runtime = ["dora-moveit @ git+https://github.com/bobdingAI/dora-moveit2@master"]
 dev = ["pytest>=8", "ruff>=0.4", "mypy>=1.10"]
 
 [tool.setuptools.packages.find]
