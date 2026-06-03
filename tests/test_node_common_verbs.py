@@ -48,3 +48,20 @@ def test_release_control_by_non_holder_is_ok_but_noop():
     out = node.dispatch("robot.release_control", {"control_source": "stranger"})
     assert out["ok"] is True   # spec: idempotent; never an error
     assert node._guard.holder == "caller-a"
+
+
+def test_get_capabilities_returns_spec_advert_shape():
+    node = MoveItArmNode(robot_id="ur5e-test")
+    node.install_common_verbs()
+    out = node.dispatch("robot.get_capabilities", {})
+    assert out["ok"] is True
+    data = out["data"]
+    assert data["spec_version"] == "1.0.0"
+    assert data["vendor"] == "moveit"
+    assert data["model"] == "arm"
+    assert "robot.heartbeat" in data["verbs"]
+    assert "robot.estop" in data["verbs"]
+    assert "robot.release_control" in data["verbs"]
+    assert "robot.get_capabilities" in data["verbs"]
+    assert "state" in data["streams"]
+    assert "safety_event" in data["streams"]

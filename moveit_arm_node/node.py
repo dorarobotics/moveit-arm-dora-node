@@ -49,6 +49,7 @@ class MoveItArmNode:
         self.register_verb("robot.heartbeat", self._verb_heartbeat)
         self.register_verb("robot.estop", self._verb_estop)
         self.register_verb("robot.release_control", self._verb_release_control)
+        self.register_verb("robot.get_capabilities", self._verb_get_capabilities)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -67,3 +68,18 @@ class MoveItArmNode:
     def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
         self._guard.release(control_source)
         return {"ok": True, "code": "0"}
+
+    def _verb_get_capabilities(self) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "code": "0",
+            "data": {
+                "spec_version": "1.0.0",
+                "vendor": "moveit",
+                "model": "arm",
+                "robot_id": self.robot_id,
+                "heartbeat_timeout_ms": self.heartbeat_timeout_ms,
+                "verbs": sorted(self._verbs.keys()),
+                "streams": ["state", "capabilities", "safety_event"],
+            },
+        }
