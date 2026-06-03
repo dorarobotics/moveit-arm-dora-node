@@ -5,7 +5,7 @@ Tests use FakeMoveItBridge from tests/fakes.py.
 """
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 
 class MoveItBridge(Protocol):
@@ -55,7 +55,7 @@ class RealMoveItBridge:
         self._mg.move_to_named(name)
 
     def plan(self, target: dict[str, Any]) -> dict[str, Any]:
-        return self._mg.plan(target)
+        return cast("dict[str, Any]", self._mg.plan(target))
 
     def execute(self, trajectory: dict[str, Any]) -> None:
         self._mg.execute(trajectory)

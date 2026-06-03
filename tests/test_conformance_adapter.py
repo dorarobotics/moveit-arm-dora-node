@@ -1,7 +1,6 @@
 """Test the in-process conformance adapter."""
 from __future__ import annotations
 
-import pytest
 
 from moveit_arm_node.conformance_adapter import InProcessAdapter
 from moveit_arm_node.node import MoveItArmNode

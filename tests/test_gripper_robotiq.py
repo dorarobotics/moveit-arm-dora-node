@@ -1,4 +1,4 @@
-from moveit_arm_node.gripper.robotiq_2f85 import Robotiq2F85, RobotiqTransport
+from moveit_arm_node.gripper.robotiq_2f85 import Robotiq2F85
 
 
 class FakeTransport:

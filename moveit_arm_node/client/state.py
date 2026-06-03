@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,7 @@ class RobotState:
     controller_holder: str | None
 
     @classmethod
-    def from_snapshot(cls, snap: dict) -> "RobotState":
+    def from_snapshot(cls, snap: dict[str, Any]) -> "RobotState":
         return cls(
             robot_id=snap["robot_id"],
             joint_positions=tuple(snap["joint_positions"]),
