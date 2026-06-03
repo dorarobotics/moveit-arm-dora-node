@@ -30,3 +30,21 @@ def test_estop_reason_defaults_to_unspecified():
     out = node.dispatch("robot.estop", {})
     assert out["ok"] is True
     assert node.estop_reason == "unspecified"
+
+
+def test_release_control_frees_motion_lock():
+    node = MoveItArmNode(robot_id="ur5e-test")
+    node.install_common_verbs()
+    node._guard.acquire("caller-a")  # simulate prior motion verb acquired it
+    out = node.dispatch("robot.release_control", {"control_source": "caller-a"})
+    assert out["ok"] is True
+    assert node._guard.holder is None
+
+
+def test_release_control_by_non_holder_is_ok_but_noop():
+    node = MoveItArmNode(robot_id="ur5e-test")
+    node.install_common_verbs()
+    node._guard.acquire("caller-a")
+    out = node.dispatch("robot.release_control", {"control_source": "stranger"})
+    assert out["ok"] is True   # spec: idempotent; never an error
+    assert node._guard.holder == "caller-a"

@@ -5,6 +5,7 @@ import logging
 from typing import Any, Callable
 
 from moveit_arm_node._watchdog import HeartbeatWatchdog
+from moveit_arm_node.controller_guard import ControllerGuard
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class MoveItArmNode:
         self._verbs: dict[str, Callable[..., Any]] = {}
         self.is_estopped: bool = False
         self.estop_reason: str | None = None
+        self._guard = ControllerGuard()
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -46,6 +48,7 @@ class MoveItArmNode:
         )
         self.register_verb("robot.heartbeat", self._verb_heartbeat)
         self.register_verb("robot.estop", self._verb_estop)
+        self.register_verb("robot.release_control", self._verb_release_control)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -59,4 +62,8 @@ class MoveItArmNode:
         self.is_estopped = True
         self.estop_reason = reason
         # Cancel any in-flight motion in Task 11 onward when motion verbs are added.
+        return {"ok": True, "code": "0"}
+
+    def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
+        self._guard.release(control_source)
         return {"ok": True, "code": "0"}
