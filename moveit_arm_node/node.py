@@ -25,6 +25,8 @@ class MoveItArmNode:
         self.gripper_driver_name = gripper_driver
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
         self._verbs: dict[str, Callable[..., Any]] = {}
+        self.is_estopped: bool = False
+        self.estop_reason: str | None = None
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -43,6 +45,7 @@ class MoveItArmNode:
             on_timeout=self._on_heartbeat_timeout,
         )
         self.register_verb("robot.heartbeat", self._verb_heartbeat)
+        self.register_verb("robot.estop", self._verb_estop)
 
     def _verb_heartbeat(self) -> dict[str, Any]:
         self._watchdog.heartbeat()
@@ -51,3 +54,9 @@ class MoveItArmNode:
     def _on_heartbeat_timeout(self, _t: float) -> None:
         # Emitted as safety_event in Task 20; for now, log only.
         logger.warning("heartbeat timeout on %s", self.robot_id)
+
+    def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
+        self.is_estopped = True
+        self.estop_reason = reason
+        # Cancel any in-flight motion in Task 11 onward when motion verbs are added.
+        return {"ok": True, "code": "0"}
