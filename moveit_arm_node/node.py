@@ -310,3 +310,19 @@ class MoveItArmNode:
         assert self._gripper is not None
         self._gripper.close()
         return {"ok": True, "code": "0"}
+
+    def state_snapshot(self) -> dict[str, Any]:
+        """Capture current state for 10 Hz state stream."""
+        joints: list[float] = (
+            self._bridge.current_joint_positions()
+            if self._bridge is not None
+            else [0.0] * 6
+        )
+        return {
+            "robot_id": self.robot_id,
+            "joint_positions": joints,
+            "gripper_width": (self._gripper.width() if self._gripper is not None else 0.0),
+            "estopped": self.is_estopped,
+            "estop_reason": self.estop_reason,
+            "controller_holder": self._guard.holder,
+        }
