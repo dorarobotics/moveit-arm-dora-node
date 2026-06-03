@@ -1,0 +1,18 @@
+id: moveit-arm
+version: 0.1.0
+class_path: moveit_arm_node.node:MoveItArmNode
+spec_version: "1.0.0"
+vendor: moveit
+model: arm
+inputs:
+  - cmd_request
+outputs:
+  - cmd_response
+  - capabilities
+  - state
+  - safety_event
+config:
+  robot_config_module: ""
+  gripper_driver: "noop"
+  heartbeat_timeout_ms: 1000
+restart_policy: on-failure

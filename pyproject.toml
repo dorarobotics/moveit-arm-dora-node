@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moveit-arm-dora-node"
+version = "0.1.0"
+description = "SPEC-VENDOR-NODE-V1 dora node wrapping dora-moveit2 (arm + Robotiq gripper)"
+requires-python = ">=3.10"
+dependencies = [
+  "dora-rs>=0.2.1,<0.3",
+  "pyarrow>=14",
+  "dora-moveit2 @ git+https://github.com/bobdingAI/dora-moveit2@main",
+  "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.4", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["moveit_arm_node*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+files = ["moveit_arm_node"]
+
+[[tool.mypy.overrides]]
+module = ["dora", "dora_moveit2.*"]
+ignore_missing_imports = true

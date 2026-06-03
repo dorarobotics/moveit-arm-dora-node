@@ -1,0 +1,45 @@
+# Python build / install artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+wheels/
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dora runtime artifacts
+out/
+*.log
+
+# Local docs (planning, internal notes)
+docs/
+
+# Claude Code
+.claude/
+.claude.json
+CLAUDE.md
