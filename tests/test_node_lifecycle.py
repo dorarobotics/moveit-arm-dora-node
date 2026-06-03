@@ -32,7 +32,7 @@ def test_full_install_sequence():
     n.install_gripper_verbs()
     n.install_scene_verbs()
     caps = n.dispatch("robot.get_capabilities", {})
-    verbs = caps["data"]["verbs"]
+    verbs = {cmd["verb"] for cmd in caps["data"]["commands"]}
     expected_subset = {
         "robot.heartbeat", "robot.estop", "robot.release_control",
         "robot.get_capabilities",

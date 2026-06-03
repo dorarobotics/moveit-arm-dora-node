@@ -46,7 +46,12 @@ class MoveItArmNode:
     def dispatch(self, verb: str, args: dict[str, Any]) -> dict[str, Any]:
         if verb not in self._verbs:
             return {"ok": False, "code": "INVALID_PARAMS", "msg": f"unknown verb: {verb}"}
-        return cast("dict[str, Any]", self._verbs[verb](**args))
+        try:
+            return cast("dict[str, Any]", self._verbs[verb](**args))
+        except TypeError as e:
+            # Missing/extra/wrong-typed args reach the handler via **args; surface
+            # them as a clean INVALID_PARAMS envelope instead of crashing the loop.
+            return {"ok": False, "code": "INVALID_PARAMS", "msg": f"bad arguments for {verb}: {e}"}
 
     def install_common_verbs(self) -> None:
         """Register the four SPEC-V1 §8.1 common verbs."""
@@ -64,34 +69,50 @@ class MoveItArmNode:
         return {"ok": True, "code": "0"}
 
     def _on_heartbeat_timeout(self, _t: float) -> None:
-        logger.warning("heartbeat timeout on %s", self.robot_id)
+        # Deadman fired: a motion was in flight and heartbeats lapsed. Engage estop
+        # (latching) so no further motion is accepted, and disarm the watchdog.
+        # NOTE: the periodic self._watchdog.tick() that triggers this must be driven
+        # by the dora event loop (see __main__/node runtime — pending).
+        logger.warning("heartbeat timeout on %s — engaging estop", self.robot_id)
+        self.is_estopped = True
+        self.estop_reason = "heartbeat_timeout"
+        self._watchdog.disarm()
         self._safety_events.append({"kind": "heartbeat_timeout", "robot_id": self.robot_id})
 
     def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
         self.is_estopped = True
         self.estop_reason = reason
+        self._watchdog.disarm()
         self._safety_events.append({"kind": "estop", "reason": reason})
-        # Cancel any in-flight motion in Task 11 onward when motion verbs are added.
         return {"ok": True, "code": "0"}
 
     def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
         self._guard.release(control_source)
+        self._watchdog.disarm()
         return {"ok": True, "code": "0"}
 
-    def _verb_get_capabilities(self) -> dict[str, Any]:
+    def capabilities_advert(self) -> dict[str, Any]:
+        """The SPEC-V1 advert published on the `capabilities` stream.
+
+        Commands are a list of ``{"verb", "safety_tier"}`` objects — the shape the
+        octos bridge consumes (it reads ``advert["commands"][*]["verb"]``). A flat
+        verb-name list is NOT recognized by the bridge.
+        """
         return {
-            "ok": True,
-            "code": "0",
-            "data": {
-                "spec_version": "1.0.0",
-                "vendor": "moveit",
-                "model": "arm",
-                "robot_id": self.robot_id,
-                "heartbeat_timeout_ms": self.heartbeat_timeout_ms,
-                "verbs": sorted(self._verbs.keys()),
-                "streams": ["state", "capabilities", "safety_event"],
-            },
+            "spec_version": "1.0.0",
+            "vendor": "moveit",
+            "model": "arm",
+            "robot_id": self.robot_id,
+            "heartbeat_timeout_ms": self.heartbeat_timeout_ms,
+            "commands": [
+                {"verb": verb, "safety_tier": "emergency_override"}
+                for verb in sorted(self._verbs.keys())
+            ],
+            "streams": ["state", "capabilities", "safety_event"],
         }
+
+    def _verb_get_capabilities(self) -> dict[str, Any]:
+        return {"ok": True, "code": "0", "data": self.capabilities_advert()}
 
     def install_motion_verbs(self) -> None:
         """Register motion planning and execution verbs."""
@@ -126,6 +147,7 @@ class MoveItArmNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         try:
             assert self._bridge is not None
             self._bridge.move_to_joint_state(joints)
@@ -152,6 +174,7 @@ class MoveItArmNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         try:
             assert self._bridge is not None
             self._bridge.move_to_pose(pose)
@@ -174,6 +197,7 @@ class MoveItArmNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         try:
             assert self._bridge is not None
             self._bridge.move_to_named(name)
@@ -214,6 +238,7 @@ class MoveItArmNode:
             self._guard.acquire(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
+        self._watchdog.arm()
         try:
             assert self._bridge is not None
             self._bridge.execute(trajectory)

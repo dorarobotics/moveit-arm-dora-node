@@ -59,9 +59,20 @@ def test_get_capabilities_returns_spec_advert_shape():
     assert data["spec_version"] == "1.0.0"
     assert data["vendor"] == "moveit"
     assert data["model"] == "arm"
-    assert "robot.heartbeat" in data["verbs"]
-    assert "robot.estop" in data["verbs"]
-    assert "robot.release_control" in data["verbs"]
-    assert "robot.get_capabilities" in data["verbs"]
+    # The bridge consumes advert["commands"][*]["verb"] — a flat verb list is not
+    # recognized. Each command must carry a verb and a safety_tier.
+    verbs = {cmd["verb"] for cmd in data["commands"]}
+    assert {"robot.heartbeat", "robot.estop", "robot.release_control",
+            "robot.get_capabilities"}.issubset(verbs)
+    assert all("safety_tier" in cmd for cmd in data["commands"])
     assert "state" in data["streams"]
     assert "safety_event" in data["streams"]
+
+
+def test_dispatch_bad_args_returns_invalid_params():
+    node = MoveItArmNode(robot_id="ur5e-test")
+    node.install_common_verbs()
+    # estop takes only `reason`; an unexpected kwarg must not crash the loop.
+    out = node.dispatch("robot.estop", {"bogus": 1})
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"
