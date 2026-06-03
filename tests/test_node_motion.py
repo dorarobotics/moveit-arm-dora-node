@@ -99,3 +99,23 @@ def test_move_to_pose_blocked_by_estop():
     )
     assert out["ok"] is False
     assert out["code"] == "VENDOR_ERROR"
+
+
+def test_move_to_named_calls_bridge():
+    node, bridge = _node_with_fake()
+    out = node.dispatch(
+        "vendor.moveit.arm.move_to_named",
+        {"name": "home", "control_source": "test"},
+    )
+    assert out["ok"] is True
+    assert ("move_to_named", ("home",), {}) in bridge.calls
+
+
+def test_move_to_named_rejects_empty_name():
+    node, _ = _node_with_fake()
+    out = node.dispatch(
+        "vendor.moveit.arm.move_to_named",
+        {"name": "", "control_source": "test"},
+    )
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"
