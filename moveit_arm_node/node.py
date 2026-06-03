@@ -6,6 +6,8 @@ from typing import Any, Callable
 
 from moveit_arm_node._watchdog import HeartbeatWatchdog
 from moveit_arm_node.controller_guard import ControllerGuard
+from moveit_arm_node.gripper import Gripper
+from moveit_arm_node.gripper.noop import NoopGripper
 from moveit_arm_node.moveit_bridge import MoveItBridge, RealMoveItBridge
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,7 @@ class MoveItArmNode:
         gripper_driver: str = "noop",
         heartbeat_timeout_ms: int = 1000,
         moveit_bridge: MoveItBridge | None = None,
+        gripper: Gripper | None = None,
     ) -> None:
         self.robot_id = robot_id
         self.robot_config_module = robot_config_module
@@ -32,6 +35,7 @@ class MoveItArmNode:
         self.estop_reason: str | None = None
         self._guard = ControllerGuard()
         self._bridge = moveit_bridge
+        self._gripper = gripper
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -213,4 +217,58 @@ class MoveItArmNode:
             self._bridge.execute(trajectory)
         except RuntimeError as e:
             return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
+        return {"ok": True, "code": "0"}
+
+    def install_gripper_verbs(self) -> None:
+        """Register gripper control verbs."""
+        if self._gripper is None:
+            self._gripper = self._build_gripper(self.gripper_driver_name)
+        self.register_verb("vendor.moveit.arm.gripper.set", self._verb_gripper_set)
+        self.register_verb("vendor.moveit.arm.gripper.open", self._verb_gripper_open)
+        self.register_verb("vendor.moveit.arm.gripper.close", self._verb_gripper_close)
+
+    @staticmethod
+    def _build_gripper(name: str) -> Gripper:
+        if name == "noop":
+            return NoopGripper()
+        # robotiq_2f85 wired in Task 17
+        raise ValueError(f"unknown gripper driver: {name}")
+
+    def _verb_gripper_set(self, *, width: float) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        if width < 0.0:
+            return {
+                "ok": False,
+                "code": "INVALID_PARAMS",
+                "msg": "width must be >= 0",
+            }
+        assert self._gripper is not None
+        self._gripper.set(float(width))
+        return {"ok": True, "code": "0"}
+
+    def _verb_gripper_open(self) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        assert self._gripper is not None
+        self._gripper.open()
+        return {"ok": True, "code": "0"}
+
+    def _verb_gripper_close(self) -> dict[str, Any]:
+        if self.is_estopped:
+            return {
+                "ok": False,
+                "code": "VENDOR_ERROR",
+                "msg": f"node is estopped: {self.estop_reason}",
+            }
+        assert self._gripper is not None
+        self._gripper.close()
         return {"ok": True, "code": "0"}
