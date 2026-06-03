@@ -1,4 +1,4 @@
-"""MoveItArmClient — wraps RealMoveItBridge with typed Python API (no dora)."""
+"""MoveItArmClient — wraps MoveGroupBridge with typed Python API (no dora)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,8 +17,10 @@ class MoveItArmClient:
     def __init__(self, *, config: ArmConfig, _bridge: MoveItBridge | None = None) -> None:
         self.config = config
         if _bridge is None:
-            from moveit_arm_node.moveit_bridge import RealMoveItBridge  # lazy
-            _bridge = RealMoveItBridge(robot_config_module=config.robot_config_module)
+            from dora_moveit2 import MoveGroup  # lazy
+            from moveit_arm_node.moveit_bridge import MoveGroupBridge
+            mg = MoveGroup(robot_config_module=config.robot_config_module)
+            _bridge = MoveGroupBridge(mg)
         self._bridge = _bridge
 
     def move_to_joint_state(self, joints: list[float]) -> None:

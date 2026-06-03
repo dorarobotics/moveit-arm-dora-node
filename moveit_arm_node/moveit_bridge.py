@@ -72,7 +72,7 @@ class MoveGroupBridge:
             traj = self._mg.plan(target.get("joints"))
         if traj is None:
             raise RuntimeError("MoveGroup plan failed")
-        return traj
+        return dict(traj)
 
     def execute(self, trajectory: dict[str, Any]) -> None:
         self._check(self._mg.execute(trajectory), "execute")
