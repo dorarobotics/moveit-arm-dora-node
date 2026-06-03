@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from moveit_arm_node._watchdog import HeartbeatWatchdog
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,3 +35,19 @@ class MoveItArmNode:
         if verb not in self._verbs:
             return {"ok": False, "code": "INVALID_PARAMS", "msg": f"unknown verb: {verb}"}
         return self._verbs[verb](**args)
+
+    def install_common_verbs(self) -> None:
+        """Register the four SPEC-V1 §8.1 common verbs."""
+        self._watchdog = HeartbeatWatchdog(
+            timeout_s=self.heartbeat_timeout_ms / 1000.0,
+            on_timeout=self._on_heartbeat_timeout,
+        )
+        self.register_verb("robot.heartbeat", self._verb_heartbeat)
+
+    def _verb_heartbeat(self) -> dict[str, Any]:
+        self._watchdog.heartbeat()
+        return {"ok": True, "code": "0"}
+
+    def _on_heartbeat_timeout(self, _t: float) -> None:
+        # Emitted as safety_event in Task 20; for now, log only.
+        logger.warning("heartbeat timeout on %s", self.robot_id)
