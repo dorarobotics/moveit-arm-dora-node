@@ -64,8 +64,9 @@ class MoveItArmRuntime:
     """Binds a MoveItArmNode to a dora node: publishes the advert, dispatches
     cmd_request → cmd_response, and streams state + safety events."""
 
-    def __init__(self, node: MoveItArmNode) -> None:
+    def __init__(self, node: MoveItArmNode, move_group: Any = None) -> None:
         self._node = node
+        self._mg = move_group
         self._started = False
         self._stop_event = threading.Event()
         self._workers: list[threading.Thread] = []
@@ -95,17 +96,23 @@ class MoveItArmRuntime:
         etype = event.get("type")
         if etype == "STOP":
             return False
-        if etype != "INPUT" or event.get("id") != "cmd_request":
+        if etype != "INPUT":
             return True
-        envelope = _decode_value(event.get("value"))
-        if envelope is None:
+        if event.get("id") == "cmd_request":
+            envelope = _decode_value(event.get("value"))
+            if envelope is None:
+                return True
+            # SPEC §6.1 target filtering — silently drop foreign-addressed commands.
+            target = envelope.get("target")
+            if target is not None and target != self._node.robot_id:
+                return True
+            response = self.handle_request(envelope)
+            _emit(dora_node, "cmd_response", response)
             return True
-        # SPEC §6.1 target filtering — silently drop foreign-addressed commands.
-        target = envelope.get("target")
-        if target is not None and target != self._node.robot_id:
-            return True
-        response = self.handle_request(envelope)
-        _emit(dora_node, "cmd_response", response)
+        # Any other input (joint_positions, trajectory, ik_solution, ...) belongs
+        # to the shared MoveGroup orchestration.
+        if self._mg is not None:
+            self._mg.handle_event(event)
         return True
 
     # ---- streams (one-shot; exposed for deterministic testing) ----
@@ -167,32 +174,40 @@ class MoveItArmRuntime:
                 logger.exception("watchdog loop iteration failed")
 
 
-def build_node_from_env() -> MoveItArmNode:
-    """Construct + fully install a MoveItArmNode from environment variables."""
+def main() -> int:
+    """Dora entry point. Imports dora lazily so Mode C / unit tests never need it."""
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
     robot_id = os.environ.get("ROBOT_ID")
     if not robot_id:
         raise SystemExit("ROBOT_ID env var is required")
+    group = os.environ.get("ROBOT_CONFIG_MODULE", "ur5e")
+    hb = int(os.environ.get("HEARTBEAT_TIMEOUT_MS", "1000"))
+
+    from dora import Node  # noqa: PLC0415 — lazy
+    from dora_moveit.workflow.move_group import MoveGroup  # noqa: PLC0415
+    from moveit_arm_node.moveit_bridge import MoveGroupBridge  # noqa: PLC0415
+    from moveit_arm_node.gripper.mujoco import MujocoGripper  # noqa: PLC0415
+
+    dora_node = Node()
+    mg = MoveGroup(group, node=dora_node)
+    bridge = MoveGroupBridge(mg)
+
+    def _emit_gripper(payload: dict[str, Any]) -> None:
+        import json
+        import pyarrow as pa
+        dora_node.send_output("gripper_command", pa.array([json.dumps(payload)]))
+
+    gripper = MujocoGripper(emit=_emit_gripper)
     node = MoveItArmNode(
-        robot_id=robot_id,
-        robot_config_module=os.environ.get("ROBOT_CONFIG_MODULE"),
-        gripper_driver=os.environ.get("GRIPPER_DRIVER", "noop"),
-        heartbeat_timeout_ms=int(os.environ.get("HEARTBEAT_TIMEOUT_MS", "1000")),
+        robot_id=robot_id, heartbeat_timeout_ms=hb,
+        moveit_bridge=bridge, gripper=gripper,
     )
     node.install_common_verbs()
     node.install_motion_verbs()
     node.install_gripper_verbs()
     node.install_scene_verbs()
-    return node
 
-
-def main() -> int:
-    """Dora entry point. Imports dora lazily so Mode C / unit tests never need it."""
-    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
-    node = build_node_from_env()
-    runtime = MoveItArmRuntime(node)
-    from dora import Node  # noqa: PLC0415 — lazy; needs a running dora daemon
-
-    dora_node = Node()
+    runtime = MoveItArmRuntime(node, move_group=mg)
     try:
         runtime.start(dora_node)
         for event in dora_node:

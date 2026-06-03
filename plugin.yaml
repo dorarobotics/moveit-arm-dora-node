@@ -6,13 +6,22 @@ vendor: moveit
 model: arm
 inputs:
   - cmd_request
+  - joint_positions
+  - trajectory
+  - plan_status
+  - ik_solution
+  - ik_status
+  - execution_status
 outputs:
   - cmd_response
   - capabilities
   - state
   - safety_event
+  - plan_request
+  - ik_request
+  - gripper_command
 config:
-  robot_config_module: ""
-  gripper_driver: "noop"
+  gripper_driver: "mujoco"
+  robot_config_module: "ur5e"
   heartbeat_timeout_ms: 1000
 restart_policy: on-failure
