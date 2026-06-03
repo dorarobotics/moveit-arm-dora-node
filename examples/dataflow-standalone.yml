@@ -1,0 +1,37 @@
+# Mode B: pure-dora standalone dataflow for the moveit-arm vendor node.
+#
+# Demonstrates moveit-arm-dora-node in isolation: cmd_driver emits a
+# robot.heartbeat envelope every 2 s; the vendor node responds; printer echoes
+# capabilities, state, safety_event, and cmd_response.
+
+nodes:
+  - id: moveit_arm
+    path: shell
+    args: python -m moveit_arm_node
+    env:
+      ROBOT_ID: ur5e-demo
+      ROBOT_CONFIG_MODULE: ur5e
+      GRIPPER_DRIVER: noop
+      HEARTBEAT_TIMEOUT_MS: "1000"
+    inputs:
+      cmd_request: cmd_driver/cmd_request
+    outputs:
+      - cmd_response
+      - capabilities
+      - state
+      - safety_event
+
+  - id: cmd_driver
+    path: shell
+    args: python examples/cmd_driver.py
+    outputs:
+      - cmd_request
+
+  - id: printer
+    path: shell
+    args: python examples/printer.py
+    inputs:
+      cmd_response: moveit_arm/cmd_response
+      capabilities: moveit_arm/capabilities
+      state: moveit_arm/state
+      safety_event: moveit_arm/safety_event
