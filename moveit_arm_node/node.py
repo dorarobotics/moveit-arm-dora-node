@@ -8,7 +8,7 @@ from moveit_arm_node._watchdog import HeartbeatWatchdog
 from moveit_arm_node.controller_guard import ControllerGuard
 from moveit_arm_node.gripper import Gripper
 from moveit_arm_node.gripper.noop import NoopGripper
-from moveit_arm_node.moveit_bridge import MoveItBridge, RealMoveItBridge
+from moveit_arm_node.moveit_bridge import MoveItBridge
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +117,7 @@ class MoveItArmNode:
     def install_motion_verbs(self) -> None:
         """Register motion planning and execution verbs."""
         if self._bridge is None:
-            if not self.robot_config_module:
-                raise ValueError("robot_config_module required to build RealMoveItBridge")
-            self._bridge = RealMoveItBridge(robot_config_module=self.robot_config_module)
+            raise ValueError("moveit_bridge must be injected before installing verbs")
         self.register_verb(
             "vendor.moveit.arm.move_to_joint_state", self._verb_move_to_joint_state
         )
@@ -249,9 +247,7 @@ class MoveItArmNode:
     def install_scene_verbs(self) -> None:
         """Register scene manipulation verbs."""
         if self._bridge is None:
-            if not self.robot_config_module:
-                raise ValueError("robot_config_module required to build RealMoveItBridge")
-            self._bridge = RealMoveItBridge(robot_config_module=self.robot_config_module)
+            raise ValueError("moveit_bridge must be injected before installing verbs")
         self.register_verb(
             "vendor.moveit.arm.scene.add_collision", self._verb_scene_add_collision
         )
