@@ -231,7 +231,14 @@ class MoveItArmNode:
     def _build_gripper(name: str) -> Gripper:
         if name == "noop":
             return NoopGripper()
-        # robotiq_2f85 wired in Task 17
+        if name == "robotiq_2f85":
+            # Real transport injection is deployment-specific; for now we error out
+            # to make the misconfiguration obvious. Hardware bringup task will provide
+            # a concrete Modbus/URCap transport.
+            raise NotImplementedError(
+                "robotiq_2f85 transport must be injected explicitly via the "
+                "MoveItArmNode(gripper=...) ctor argument in hardware deployment"
+            )
         raise ValueError(f"unknown gripper driver: {name}")
 
     def _verb_gripper_set(self, *, width: float) -> dict[str, Any]:
