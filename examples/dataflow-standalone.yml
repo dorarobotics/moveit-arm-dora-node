@@ -1,8 +1,14 @@
 # Mode B: pure-dora standalone dataflow for the moveit-arm vendor node.
 #
-# Demonstrates moveit-arm-dora-node in isolation: cmd_driver emits a
-# robot.heartbeat envelope every 2 s; the vendor node responds; printer echoes
-# capabilities, state, safety_event, and cmd_response.
+# cmd_driver emits a robot.heartbeat envelope every 2 s (driven by a dora timer);
+# the vendor node responds; printer echoes capabilities, state, safety_event, and
+# cmd_response.
+#
+# dora runs each node with its working directory set to THIS file's directory
+# (examples/), so the script args are bare filenames. Shell nodes require the
+# daemon to be started with DORA_ALLOW_SHELL_NODES=true. Running for real also
+# needs the planning backend: `pip install -e ".[runtime]"` (dora-moveit2) and a
+# ROBOT_CONFIG_MODULE the backend recognizes.
 
 nodes:
   - id: moveit_arm
@@ -23,13 +29,15 @@ nodes:
 
   - id: cmd_driver
     path: shell
-    args: python examples/cmd_driver.py
+    args: python cmd_driver.py
+    inputs:
+      tick: dora/timer/millis/2000
     outputs:
       - cmd_request
 
   - id: printer
     path: shell
-    args: python examples/printer.py
+    args: python printer.py
     inputs:
       cmd_response: moveit_arm/cmd_response
       capabilities: moveit_arm/capabilities
