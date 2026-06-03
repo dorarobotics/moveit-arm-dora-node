@@ -64,3 +64,38 @@ def test_move_to_joint_state_acquires_motion_lock():
     )
     assert out["ok"] is False
     assert out["code"] == "CONTROLLER_BUSY"
+
+
+def test_move_to_pose_calls_bridge():
+    node, bridge = _node_with_fake()
+    pose = {"position": [0.4, 0.0, 0.3], "orientation": [0, 0, 0, 1]}
+    out = node.dispatch(
+        "vendor.moveit.arm.move_to_pose",
+        {"pose": pose, "control_source": "test"},
+    )
+    assert out["ok"] is True
+    assert ("move_to_pose", (pose,), {}) in bridge.calls
+
+
+def test_move_to_pose_requires_position_and_orientation():
+    node, _ = _node_with_fake()
+    out = node.dispatch(
+        "vendor.moveit.arm.move_to_pose",
+        {"pose": {"position": [0.4, 0.0, 0.3]}, "control_source": "test"},
+    )
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"
+
+
+def test_move_to_pose_blocked_by_estop():
+    node, _ = _node_with_fake()
+    node.dispatch("robot.estop", {"reason": "test"})
+    out = node.dispatch(
+        "vendor.moveit.arm.move_to_pose",
+        {
+            "pose": {"position": [0.4, 0, 0.3], "orientation": [0, 0, 0, 1]},
+            "control_source": "test",
+        },
+    )
+    assert out["ok"] is False
+    assert out["code"] == "VENDOR_ERROR"
