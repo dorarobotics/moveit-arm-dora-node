@@ -52,6 +52,13 @@ class FakeMoveGroup:
         self.calls: list[tuple] = []
         self._fail_next = fail_next
         self._joints = [0.0] * num_joints
+        # Completion flags MoveGroupBridge.motion_status() reads. Tests set these
+        # to drive a fake motion through pending -> succeeded/failed.
+        self._plan_done = False
+        self._plan_success = False
+        self._plan_message = ""
+        self._exec_done = False
+        self._exec_success = False
 
     def _maybe_fail(self):
         if self._fail_next:
@@ -64,6 +71,11 @@ class FakeMoveGroup:
         if joint_goal is not None:
             self._joints = list(joint_goal)
         return self._maybe_fail()
+
+    def begin_motion_async(self, joint_goal=None):
+        self.calls.append(("begin_motion_async", joint_goal))
+        if joint_goal is not None:
+            self._joints = list(joint_goal)
 
     def set_pose_target(self, pose):
         self.calls.append(("set_pose_target", pose))

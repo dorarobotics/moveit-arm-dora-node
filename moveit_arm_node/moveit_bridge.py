@@ -23,6 +23,16 @@ class MoveItBridge(Protocol):
 
     def move_to_named(self, name: str) -> None: ...
 
+    def start_move_to_joint_state(self, joints: list[float]) -> None: ...
+
+    def start_move_to_pose(self, pose: dict[str, Any]) -> None: ...
+
+    def start_move_to_named(self, name: str) -> None: ...
+
+    def motion_status(self) -> tuple[str, str]: ...
+
+    def stop(self) -> None: ...
+
     def plan(self, target: dict[str, Any]) -> dict[str, Any]: ...
 
     def execute(self, trajectory: dict[str, Any]) -> None: ...
@@ -62,6 +72,40 @@ class MoveGroupBridge:
     def move_to_named(self, name: str) -> None:
         self._mg.set_named_target(name)
         self._check(self._mg.go(wait=True), f"go(named={name})")
+
+    # ---- non-blocking motion (deferred-response path) ----
+
+    def start_move_to_joint_state(self, joints: list[float]) -> None:
+        self._mg.begin_motion_async(joints)
+
+    def start_move_to_pose(self, pose: dict[str, Any]) -> None:
+        self._mg.set_pose_target(pose_to_rpy(pose))
+        self._mg.begin_motion_async()
+
+    def start_move_to_named(self, name: str) -> None:
+        self._mg.set_named_target(name)
+        self._mg.begin_motion_async()
+
+    def motion_status(self) -> tuple[str, str]:
+        """Map MoveGroup's plan/exec flags to (state, message).
+
+        state is one of "pending" | "succeeded" | "failed". Pose-target IK
+        failures are surfaced here too: Task 1 latches _plan_done/_plan_success
+        on an IK failure, so they read as a planning failure.
+        """
+        mg = self._mg
+        if not mg._plan_done:
+            return ("pending", "")
+        if not mg._plan_success:
+            return ("failed", mg._plan_message or "planning failed")
+        if not mg._exec_done:
+            return ("pending", "")
+        if not mg._exec_success:
+            return ("failed", "execution failed")
+        return ("succeeded", "")
+
+    def stop(self) -> None:
+        self._mg.stop()
 
     def plan(self, target: dict[str, Any]) -> dict[str, Any]:
         if "position" in target and "orientation" in target:
