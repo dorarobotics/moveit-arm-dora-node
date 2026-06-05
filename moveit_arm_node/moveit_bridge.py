@@ -80,6 +80,8 @@ class MoveGroupBridge:
 
     def start_move_to_pose(self, pose: dict[str, Any]) -> None:
         self._mg.set_pose_target(pose_to_rpy(pose))
+        # No clear_pose_targets() here (unlike the blocking move_to_pose):
+        # begin_motion_async clears _target_pose itself when async IK resolves.
         self._mg.begin_motion_async()
 
     def start_move_to_named(self, name: str) -> None:
