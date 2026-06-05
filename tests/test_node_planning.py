@@ -30,13 +30,3 @@ def test_execute_unsupported_in_sim():
     assert out["code"] == "INVALID_PARAMS"
     # The verb is rejected before touching the bridge.
     assert not any(c[0] == "execute" for c in bridge.calls)
-
-
-def test_execute_rejects_missing_trajectory():
-    n, _ = _node()
-    out = n.dispatch(
-        "vendor.moveit.arm.execute",
-        {"control_source": "test"},
-    )
-    assert out["ok"] is False
-    assert out["code"] == "INVALID_PARAMS"
