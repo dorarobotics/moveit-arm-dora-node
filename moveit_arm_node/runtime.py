@@ -123,6 +123,9 @@ class MoveItArmRuntime:
         """Process one dora event. Returns False when the loop should stop."""
         etype = event.get("type")
         if etype == "STOP":
+            # A pending deferred motion is intentionally abandoned at shutdown:
+            # we don't emit its cmd_response here. The bridge's CMD_TIMEOUT is the
+            # deliberate backstop for the held octos caller.
             return False
         if etype != "INPUT":
             return True
@@ -145,6 +148,14 @@ class MoveItArmRuntime:
         return True
 
     def _check_pending(self, dora_node: DoraNodeLike) -> None:
+        # NOTE: pending-op resolution (success/failure, estop-abort, AND the
+        # deadline) is driven entirely by the dora event thread — i.e. coupled to
+        # the liveness of the inbound `joint_positions` stream (10 Hz in sim). If
+        # that stream stalls (e.g. the sim/upstream node dies), a pending op is not
+        # resolved here and the bridge's CMD_TIMEOUT (60 s) is the backstop. In sim
+        # the heartbeat watchdog is disabled (HEARTBEAT_TIMEOUT_MS=0), so the deadman
+        # never fires; on real hardware, driving this check from the watchdog worker
+        # thread (with a lock around `self._pending`) is the planned follow-up.
         if self._pending is None:
             return
         op = self._pending
