@@ -10,29 +10,26 @@ def _node():
     return n, bridge
 
 
-def test_plan_returns_trajectory_payload():
+def test_plan_unsupported_in_sim():
     n, _ = _node()
     out = n.dispatch(
         "vendor.moveit.arm.plan",
         {"target": {"position": [0.4, 0, 0.3], "orientation": [0, 0, 0, 1]}},
     )
-    assert out["ok"] is True
-    assert "trajectory" in out["data"]
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"
 
 
-def test_execute_runs_trajectory():
+def test_execute_unsupported_in_sim():
     n, bridge = _node()
-    plan = n.dispatch(
-        "vendor.moveit.arm.plan",
-        {"target": {"position": [0.4, 0, 0.3], "orientation": [0, 0, 0, 1]}},
-    )
-    traj = plan["data"]["trajectory"]
     out = n.dispatch(
         "vendor.moveit.arm.execute",
-        {"trajectory": traj, "control_source": "test"},
+        {"trajectory": {"fake_trajectory": True}, "control_source": "test"},
     )
-    assert out["ok"] is True
-    assert any(c[0] == "execute" for c in bridge.calls)
+    assert out["ok"] is False
+    assert out["code"] == "INVALID_PARAMS"
+    # The verb is rejected before touching the bridge.
+    assert not any(c[0] == "execute" for c in bridge.calls)
 
 
 def test_execute_rejects_missing_trajectory():

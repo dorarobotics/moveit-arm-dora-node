@@ -11,6 +11,9 @@ class FakeMoveItBridge:
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self._fail_next = fail_next
         self._joints = [0.0, -1.57, 0.0, -1.57, 0.0, 0.0]
+        # Drives node/runtime deferred-motion tests: ("pending"|"succeeded"|"failed", msg)
+        self.status: tuple[str, str] = ("pending", "")
+        self.stopped = False
 
     def _record(self, name: str, *a: Any, **kw: Any) -> None:
         if self._fail_next is not None:
@@ -27,6 +30,22 @@ class FakeMoveItBridge:
 
     def move_to_named(self, name: str) -> None:
         self._record("move_to_named", name)
+
+    def start_move_to_joint_state(self, joints: list[float]) -> None:
+        self._record("start_move_to_joint_state", joints)
+        self._joints = list(joints)
+
+    def start_move_to_pose(self, pose: dict[str, Any]) -> None:
+        self._record("start_move_to_pose", pose)
+
+    def start_move_to_named(self, name: str) -> None:
+        self._record("start_move_to_named", name)
+
+    def motion_status(self) -> tuple[str, str]:
+        return self.status
+
+    def stop(self) -> None:
+        self.stopped = True
 
     def plan(self, target: dict[str, Any]) -> dict[str, Any]:
         self._record("plan", target)

@@ -37,6 +37,7 @@ class MoveItArmNode:
         self._bridge = moveit_bridge
         self._gripper = gripper
         self._safety_events: list[dict[str, Any]] = []
+        self._motion_holder: str = ""
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -126,6 +127,28 @@ class MoveItArmNode:
         self.register_verb("vendor.moveit.arm.plan", self._verb_plan)
         self.register_verb("vendor.moveit.arm.execute", self._verb_execute)
 
+    def begin_motion(self, control_source: str) -> None:
+        """Acquire the control lock and arm the watchdog for a deferred motion.
+
+        Raises ControllerBusy if a different caller holds the slot — the verb
+        handler maps that to CONTROLLER_BUSY.
+        """
+        self._guard.acquire(control_source)
+        self._motion_holder = control_source
+        self._watchdog.arm()
+
+    def end_motion(self) -> None:
+        """Release the control lock and disarm the watchdog. Called by the
+        runtime when it resolves the pending op (success/failure/timeout/estop)."""
+        self._guard.release(self._motion_holder)
+        self._motion_holder = ""
+        self._watchdog.disarm()
+
+    def motion_status(self) -> tuple[str, str]:
+        """Delegate to the bridge: ("pending"|"succeeded"|"failed", message)."""
+        assert self._bridge is not None
+        return self._bridge.motion_status()
+
     def _verb_move_to_joint_state(
         self, *, joints: list[float], control_source: str = ""
     ) -> dict[str, Any]:
@@ -142,16 +165,16 @@ class MoveItArmNode:
                 "msg": f"joints must have length 6, got {len(joints)}",
             }
         try:
-            self._guard.acquire(control_source)
+            self.begin_motion(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
-        self._watchdog.arm()
         try:
             assert self._bridge is not None
-            self._bridge.move_to_joint_state(joints)
+            self._bridge.start_move_to_joint_state(joints)
         except RuntimeError as e:
+            self.end_motion()
             return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
-        return {"ok": True, "code": "0"}
+        return {"code": "DEFERRED"}
 
     def _verb_move_to_pose(
         self, *, pose: dict[str, Any], control_source: str = ""
@@ -169,16 +192,16 @@ class MoveItArmNode:
                 "msg": "pose must include `position` (xyz) and `orientation` (xyzw)",
             }
         try:
-            self._guard.acquire(control_source)
+            self.begin_motion(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
-        self._watchdog.arm()
         try:
             assert self._bridge is not None
-            self._bridge.move_to_pose(pose)
+            self._bridge.start_move_to_pose(pose)
         except RuntimeError as e:
+            self.end_motion()
             return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
-        return {"ok": True, "code": "0"}
+        return {"code": "DEFERRED"}
 
     def _verb_move_to_named(
         self, *, name: str, control_source: str = ""
@@ -192,57 +215,34 @@ class MoveItArmNode:
         if not name:
             return {"ok": False, "code": "INVALID_PARAMS", "msg": "name must be non-empty"}
         try:
-            self._guard.acquire(control_source)
+            self.begin_motion(control_source)
         except Exception as e:
             return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
-        self._watchdog.arm()
         try:
             assert self._bridge is not None
-            self._bridge.move_to_named(name)
+            self._bridge.start_move_to_named(name)
         except RuntimeError as e:
+            self.end_motion()
             return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
-        return {"ok": True, "code": "0"}
+        return {"code": "DEFERRED"}
 
-    def _verb_plan(self, *, target: dict[str, Any]) -> dict[str, Any]:
-        if self.is_estopped:
-            return {
-                "ok": False,
-                "code": "VENDOR_ERROR",
-                "msg": f"node is estopped: {self.estop_reason}",
-            }
-        try:
-            assert self._bridge is not None
-            traj = self._bridge.plan(target)
-        except RuntimeError as e:
-            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
-        return {"ok": True, "code": "0", "data": {"trajectory": traj}}
+    def _verb_plan(self, *, target: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "code": "INVALID_PARAMS",
+            "msg": "plan/execute not supported on the auto-executing sim dataflow; "
+                   "use move_to_joint_state / move_to_named / move_to_pose",
+        }
 
     def _verb_execute(
         self, *, trajectory: dict[str, Any] | None = None, control_source: str = ""
     ) -> dict[str, Any]:
-        if self.is_estopped:
-            return {
-                "ok": False,
-                "code": "VENDOR_ERROR",
-                "msg": f"node is estopped: {self.estop_reason}",
-            }
-        if trajectory is None:
-            return {
-                "ok": False,
-                "code": "INVALID_PARAMS",
-                "msg": "trajectory is required",
-            }
-        try:
-            self._guard.acquire(control_source)
-        except Exception as e:
-            return {"ok": False, "code": "CONTROLLER_BUSY", "msg": str(e)}
-        self._watchdog.arm()
-        try:
-            assert self._bridge is not None
-            self._bridge.execute(trajectory)
-        except RuntimeError as e:
-            return {"ok": False, "code": "VENDOR_ERROR", "msg": str(e)}
-        return {"ok": True, "code": "0"}
+        return {
+            "ok": False,
+            "code": "INVALID_PARAMS",
+            "msg": "plan/execute not supported on the auto-executing sim dataflow; "
+                   "use move_to_joint_state / move_to_named / move_to_pose",
+        }
 
     def install_scene_verbs(self) -> None:
         """Register scene manipulation verbs."""

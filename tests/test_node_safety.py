@@ -61,7 +61,7 @@ def test_watchdog_deadman_engages_estop_through_real_arm_and_tick():
         "vendor.moveit.arm.move_to_joint_state",
         {"joints": [0.0] * 6, "control_source": "c"},
     )
-    assert out["ok"] is True
+    assert out["code"] == "DEFERRED"
     # No heartbeats arrive; after the window the loop's tick fires the deadman.
     time.sleep(0.05)
     n._watchdog.tick()
