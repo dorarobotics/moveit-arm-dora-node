@@ -149,6 +149,11 @@ class MoveItArmNode:
         assert self._bridge is not None
         return self._bridge.motion_status()
 
+    def stop_motion(self) -> None:
+        """Best-effort halt of an in-flight motion (estop abort)."""
+        if self._bridge is not None:
+            self._bridge.stop()
+
     def _verb_move_to_joint_state(
         self, *, joints: list[float], control_source: str = ""
     ) -> dict[str, Any]:

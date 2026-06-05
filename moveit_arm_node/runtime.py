@@ -17,6 +17,8 @@ import json
 import logging
 import os
 import threading
+import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import pyarrow as pa
@@ -33,6 +35,21 @@ logger = logging.getLogger(__name__)
 
 STATE_PERIOD_S = 0.1  # 10 Hz state stream
 WATCHDOG_PERIOD_S = 0.1  # 10 Hz watchdog tick
+
+MOTION_DEADLINE_S = 55.0  # < bridge CMD_TIMEOUT_S (60) so we resolve before it gives up
+
+MOTION_VERBS = frozenset({
+    "vendor.moveit.arm.move_to_joint_state",
+    "vendor.moveit.arm.move_to_pose",
+    "vendor.moveit.arm.move_to_named",
+})
+
+
+@dataclass
+class PendingOp:
+    """A motion verb whose cmd_response is withheld until the motion completes."""
+    request: Any  # CmdRequest (carries request_id, spec_version, trace_id)
+    started: float  # time.monotonic() at dispatch
 
 
 class DoraNodeLike(Protocol):
@@ -70,17 +87,28 @@ class MoveItArmRuntime:
         self._started = False
         self._stop_event = threading.Event()
         self._workers: list[threading.Thread] = []
+        self._pending: PendingOp | None = None
+        self.MOTION_DEADLINE_S = MOTION_DEADLINE_S
 
     # ---- request handling (pure: dict in, dict out) ----
 
-    def handle_request(self, envelope: dict[str, Any]) -> dict[str, Any]:
-        """Turn a cmd_request envelope into a cmd_response envelope. Pure — no
-        transport, no target filtering (the caller decides routing)."""
+    def handle_request(self, envelope: dict[str, Any]) -> dict[str, Any] | None:
+        """Turn a cmd_request into a cmd_response, or return None to withhold it
+        (deferred motion). Pure except for recording the pending op."""
         try:
             req = parse_cmd_request(envelope)
         except InvalidEnvelope as exc:
             return error_response_for_raw(envelope, "INVALID_PARAMS", str(exc))
+        # A motion is already in flight — reject a second one (single in-flight).
+        if self._pending is not None and req.verb in MOTION_VERBS:
+            return build_cmd_response(
+                req, ok=False, code="CONTROLLER_BUSY",
+                msg="a motion is already in progress",
+            )
         result = self._node.dispatch(req.verb, req.params)
+        if result.get("code") == "DEFERRED":
+            self._pending = PendingOp(request=req, started=time.monotonic())
+            return None
         return build_cmd_response(
             req,
             ok=bool(result.get("ok", False)),
@@ -100,20 +128,47 @@ class MoveItArmRuntime:
             return True
         if event.get("id") == "cmd_request":
             envelope = _decode_value(event.get("value"))
-            if envelope is None:
-                return True
-            # SPEC §6.1 target filtering — silently drop foreign-addressed commands.
-            target = envelope.get("target")
-            if target is not None and target != self._node.robot_id:
-                return True
-            response = self.handle_request(envelope)
-            _emit(dora_node, "cmd_response", response)
-            return True
-        # Any other input (joint_positions, trajectory, ik_solution, ...) belongs
-        # to the shared MoveGroup orchestration.
-        if self._mg is not None:
-            self._mg.handle_event(event)
+            if envelope is not None:
+                target = envelope.get("target")
+                if target is None or target == self._node.robot_id:
+                    response = self.handle_request(envelope)
+                    if response is not None:
+                        _emit(dora_node, "cmd_response", response)
+        else:
+            # joint_positions / plan_status / trajectory / execution_status / ik_* /
+            # command_result belong to the shared MoveGroup orchestration.
+            if self._mg is not None:
+                self._mg.handle_event(event)
+        # Resolve any in-flight deferred motion (the 10 Hz joint stream keeps this
+        # firing throughout a move, and enforces the deadline).
+        self._check_pending(dora_node)
         return True
+
+    def _check_pending(self, dora_node: DoraNodeLike) -> None:
+        if self._pending is None:
+            return
+        op = self._pending
+        # estop aborts an in-flight motion promptly (reuses the node's latched flag).
+        if self._node.is_estopped:
+            self._node.stop_motion()
+            self._emit_pending(dora_node, op, ok=False, code="VENDOR_ERROR",
+                               msg="aborted by estop")
+            return
+        status, msg = self._node.motion_status()
+        if status == "succeeded":
+            self._emit_pending(dora_node, op, ok=True, code="0")
+        elif status == "failed":
+            self._emit_pending(dora_node, op, ok=False, code="VENDOR_ERROR", msg=msg)
+        elif time.monotonic() - op.started > self.MOTION_DEADLINE_S:
+            self._emit_pending(dora_node, op, ok=False, code="BRIDGE_TIMEOUT",
+                               msg="motion did not complete in time")
+
+    def _emit_pending(self, dora_node: DoraNodeLike, op: "PendingOp", *,
+                      ok: bool, code: str, msg: str = "") -> None:
+        _emit(dora_node, "cmd_response",
+              build_cmd_response(op.request, ok=ok, code=code, msg=msg))
+        self._pending = None
+        self._node.end_motion()  # release control lock + disarm watchdog
 
     # ---- streams (one-shot; exposed for deterministic testing) ----
 

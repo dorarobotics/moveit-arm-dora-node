@@ -61,17 +61,117 @@ def test_on_event_dispatches_and_echoes_request_id():
     assert resp[0]["request_id"] == "r1"
 
 
-def test_on_event_motion_verb_round_trip():
-    rt, _ = _runtime()
+def test_motion_verb_withholds_response_and_records_pending():
+    rt, node = _runtime()
     fake = FakeDoraNode()
     env = {
         "verb": "vendor.moveit.arm.move_to_named",
-        "params": {"name": "home"},
+        "params": {"name": "home", "control_source": "c"},
         "request_id": "r2",
         "target": "ur5e-001",
     }
     rt.on_event(_cmd_request(env), fake)
-    assert fake.by_id("cmd_response")[0]["ok"] is True
+    assert fake.by_id("cmd_response") == []
+    assert rt._pending is not None
+    assert rt._pending.request.request_id == "r2"
+
+
+def test_pending_resolves_to_ok_when_motion_succeeds():
+    rt, node = _runtime()
+    fake = FakeDoraNode()
+    env = {
+        "verb": "vendor.moveit.arm.move_to_named",
+        "params": {"name": "home", "control_source": "c"},
+        "request_id": "r3",
+        "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(env), fake)
+    node._bridge.status = ("succeeded", "")
+    rt.on_event({"type": "INPUT", "id": "joint_positions", "value": pa.array([0.0])}, fake)
+    resp = fake.by_id("cmd_response")
+    assert len(resp) == 1
+    assert resp[0]["request_id"] == "r3"
+    assert resp[0]["ok"] is True
+    assert rt._pending is None
+
+
+def test_pending_resolves_to_vendor_error_on_failure():
+    rt, node = _runtime()
+    fake = FakeDoraNode()
+    env = {
+        "verb": "vendor.moveit.arm.move_to_named",
+        "params": {"name": "home", "control_source": "c"},
+        "request_id": "r4", "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(env), fake)
+    node._bridge.status = ("failed", "no path found")
+    rt.on_event({"type": "INPUT", "id": "joint_positions", "value": pa.array([0.0])}, fake)
+    resp = fake.by_id("cmd_response")
+    assert resp[0]["ok"] is False
+    assert resp[0]["code"] == "VENDOR_ERROR"
+    assert "no path" in resp[0]["msg"]
+    assert rt._pending is None
+
+
+def test_second_motion_while_pending_is_controller_busy():
+    rt, node = _runtime()
+    fake = FakeDoraNode()
+    first = {
+        "verb": "vendor.moveit.arm.move_to_named",
+        "params": {"name": "home", "control_source": "c"},
+        "request_id": "r5", "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(first), fake)
+    second = {
+        "verb": "vendor.moveit.arm.move_to_joint_state",
+        "params": {"joints": [0.0] * 6, "control_source": "c"},
+        "request_id": "r6", "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(second), fake)
+    resp = fake.by_id("cmd_response")
+    assert len(resp) == 1
+    assert resp[0]["request_id"] == "r6"
+    assert resp[0]["code"] == "CONTROLLER_BUSY"
+    assert sum(1 for c in node._bridge.calls if c[0] == "start_move_to_joint_state") == 0
+
+
+def test_estop_while_pending_aborts_promptly():
+    rt, node = _runtime()
+    fake = FakeDoraNode()
+    env = {
+        "verb": "vendor.moveit.arm.move_to_named",
+        "params": {"name": "home", "control_source": "c"},
+        "request_id": "r7", "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(env), fake)
+    estop = {"verb": "robot.estop", "params": {"reason": "manual"},
+             "request_id": "r8", "target": "ur5e-001"}
+    rt.on_event(_cmd_request(estop), fake)
+    aborted = [r for r in fake.by_id("cmd_response") if r["request_id"] == "r7"]
+    assert len(aborted) == 1
+    assert aborted[0]["ok"] is False
+    assert aborted[0]["code"] == "VENDOR_ERROR"
+    assert "estop" in aborted[0]["msg"].lower()
+    assert node._bridge.stopped is True
+    assert rt._pending is None
+
+
+def test_pending_times_out_after_deadline():
+    import time as _time
+    rt, node = _runtime()
+    fake = FakeDoraNode()
+    env = {
+        "verb": "vendor.moveit.arm.move_to_named",
+        "params": {"name": "home", "control_source": "c"},
+        "request_id": "r9", "target": "ur5e-001",
+    }
+    rt.on_event(_cmd_request(env), fake)
+    rt._pending.started = _time.monotonic() - (rt.MOTION_DEADLINE_S + 1.0)
+    rt.on_event({"type": "INPUT", "id": "joint_positions", "value": pa.array([0.0])}, fake)
+    resp = [r for r in fake.by_id("cmd_response") if r["request_id"] == "r9"]
+    assert resp[0]["ok"] is False
+    assert resp[0]["code"] == "BRIDGE_TIMEOUT"
+    assert rt._pending is None
 
 
 def test_on_event_drops_foreign_target():
