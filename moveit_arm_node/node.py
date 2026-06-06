@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Callable, cast
 
 from moveit_arm_node._watchdog import HeartbeatWatchdog
@@ -38,6 +39,14 @@ class MoveItArmNode:
         self._gripper = gripper
         self._safety_events: list[dict[str, Any]] = []
         self._motion_holder: str = ""
+        # Monotonic per-stream sequence numbers (SPEC: every state/safety envelope
+        # carries `seq`; the bridge's events_since returns seq > since, so seq MUST
+        # start at 1 for a since=0 poll to see the first event). Stamped under a lock
+        # because state is published from the state worker and safety events are
+        # queued from the verb-dispatch and watchdog threads.
+        self._state_seq = 0
+        self._safety_seq = 0
+        self._seq_lock = threading.Lock()
 
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
@@ -78,13 +87,13 @@ class MoveItArmNode:
         self.is_estopped = True
         self.estop_reason = "heartbeat_timeout"
         self._watchdog.disarm()
-        self._safety_events.append({"kind": "heartbeat_timeout", "robot_id": self.robot_id})
+        self._queue_safety_event({"kind": "heartbeat_timeout", "robot_id": self.robot_id})
 
     def _verb_estop(self, *, reason: str = "unspecified") -> dict[str, Any]:
         self.is_estopped = True
         self.estop_reason = reason
         self._watchdog.disarm()
-        self._safety_events.append({"kind": "estop", "reason": reason})
+        self._queue_safety_event({"kind": "estop", "reason": reason})
         return {"ok": True, "code": "0"}
 
     def _verb_release_control(self, *, control_source: str = "") -> dict[str, Any]:
@@ -339,14 +348,26 @@ class MoveItArmNode:
         self._gripper.close()
         return {"ok": True, "code": "0"}
 
+    def _queue_safety_event(self, payload: dict[str, Any]) -> None:
+        """Append a safety event stamped with a monotonic `seq` (starts at 1)."""
+        with self._seq_lock:
+            self._safety_seq += 1
+            seq = self._safety_seq
+        self._safety_events.append({**payload, "seq": seq})
+
     def state_snapshot(self) -> dict[str, Any]:
-        """Capture current state for 10 Hz state stream."""
+        """Capture current state for the 10 Hz state stream, stamped with a
+        monotonic `seq` (one per emitted snapshot, starting at 1)."""
         joints: list[float] = (
             self._bridge.current_joint_positions()
             if self._bridge is not None
             else [0.0] * 6
         )
+        with self._seq_lock:
+            self._state_seq += 1
+            seq = self._state_seq
         return {
+            "seq": seq,
             "robot_id": self.robot_id,
             "joint_positions": joints,
             "gripper_width": (self._gripper.width() if self._gripper is not None else 0.0),

@@ -25,6 +25,16 @@ def test_estop_emits_safety_event():
     assert events[0]["reason"] == "test"
 
 
+def test_safety_events_have_monotonic_seq_starting_at_1():
+    # seq must start at 1 so the bridge's events_since(seq > since) with the
+    # default since=0 returns the first event (the original get_recent_safety_events bug).
+    n = _node()
+    n.dispatch("robot.estop", {"reason": "a"})
+    n._on_heartbeat_timeout(0.0)
+    events = n.drain_safety_events()
+    assert [e["seq"] for e in events] == [1, 2]
+
+
 def test_drain_clears_queue():
     n = _node()
     n.dispatch("robot.estop", {"reason": "x"})
