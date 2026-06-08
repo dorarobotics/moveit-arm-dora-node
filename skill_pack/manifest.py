@@ -52,3 +52,10 @@ def vec(key: str, default) -> np.ndarray:
     if isinstance(v, str):
         return np.array([float(x) for x in v.split(",")])
     return np.array(v, dtype=float)
+
+
+def b(key: str, default: bool) -> bool:
+    v = _raw(key, default)
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "on")
+    return bool(v)
