@@ -45,8 +45,13 @@ JNT_RANGE_START = int(cfg.f("jnt_range_start", 1))
 ARM_QPOS = slice(ARM_QPOS_START, ARM_QPOS_START + NUM_JOINTS)
 ARM_QVEL = slice(ARM_QVEL_START, ARM_QVEL_START + NUM_JOINTS)
 # A <6-DOF arm can't hold a full 6-DOF grasp orientation, so default to down-only
-# IK (z-axis down, yaw free = feasible). 6-DOF arms hold the full grasp orientation.
+# IK (approach axis down, yaw free = feasible). 6-DOF arms hold the full grasp orientation.
 HOLD_FULL_ORIENT = cfg.b("hold_full_orientation", NUM_JOINTS >= 6)
+# Which pinch-site local axis is the gripper APPROACH (points at the object) — the
+# down-only IK drives this axis to world -z. UR5e/reBot pinch sites use +z; SO-101's
+# gripper approach is +x. Per-robot via the manifest, so the skill code is unchanged.
+_APPROACH_AXIS = {"x": 0, "y": 1, "z": 2}[cfg.s("approach_axis", "z").lower()]
+_APPROACH_SIGN = cfg.f("approach_sign", 1.0)
 
 # Robot-specific knobs come from the per-robot MANIFEST (ROBOT_MANIFEST=...json),
 # overridable by env. Adding a new arm of this class = write a manifest; this skill
@@ -135,7 +140,8 @@ def _solve(xyz, seed, target_R=None, iters=400, pos_w=1.0, rot_w=0.5):
             e_rot = 0.5 * (np.cross(Rc[:, 0], target_R[:, 0]) + np.cross(Rc[:, 1], target_R[:, 1])
                            + np.cross(Rc[:, 2], target_R[:, 2])) * rot_w
         else:
-            e_rot = np.cross(Rc[:, 2], np.array([0.0, 0.0, -1.0])) * rot_w
+            e_rot = np.cross(Rc[:, _APPROACH_AXIS] * _APPROACH_SIGN,
+                             np.array([0.0, 0.0, -1.0])) * rot_w
         if np.linalg.norm(e_pos) < 1e-3 and np.linalg.norm(e_rot) < 1e-2:
             break
         mujoco.mj_jacSite(_m, _d, jacp, jacr, _site)
