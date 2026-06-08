@@ -1,0 +1,15 @@
+{
+  "robot_name": "reBotArm B601-DM",
+  "object_noun": "red cube",
+  "arm_home": [0.0, -1.0, -1.5, 0.0, 0.0, 0.0],
+  "grasp_bias": 0.0,
+  "grasp_z": 0.02,
+  "place_z": 0.03,
+  "approach_z": 0.18,
+  "lift_zs": [0.06, 0.10, 0.18],
+  "grip_open_w": 0.085,
+  "grip_close_w": 0.0,
+  "grip_dwell": 3.0,
+  "plate_x": 0.25,
+  "plate_y": 0.0
+}

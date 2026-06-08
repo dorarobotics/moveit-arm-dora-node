@@ -1,0 +1,15 @@
+{
+  "robot_name": "UR5e",
+  "object_noun": "red ball",
+  "arm_home": [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0],
+  "grasp_bias": 0.017,
+  "grasp_z": 0.03,
+  "place_z": 0.04,
+  "approach_z": 0.22,
+  "lift_zs": [0.07, 0.13, 0.22],
+  "grip_open_w": 0.085,
+  "grip_close_w": 0.0,
+  "grip_dwell": 3.0,
+  "plate_x": 0.25,
+  "plate_y": 0.0
+}
