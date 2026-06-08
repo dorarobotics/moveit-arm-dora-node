@@ -48,6 +48,32 @@ class MoveItArmNode:
         self._safety_seq = 0
         self._seq_lock = threading.Lock()
 
+    @property
+    def expected_joint_count(self) -> int:
+        """Arm DOF for joint-state validation, from the robot config (default 6).
+
+        Resolved once from robot_config_module's *Config class NUM_JOINTS so a 5-DOF
+        arm (SO-101) is accepted; falls back to 6 (UR5e/reBot) when unavailable.
+        """
+        n = getattr(self, "_expected_joints", None)
+        if n is not None:
+            return n
+        n = 6
+        if self.robot_config_module:
+            try:
+                import importlib
+                mod = importlib.import_module(self.robot_config_module)
+                for name in dir(mod):
+                    obj = getattr(mod, name)
+                    if (isinstance(obj, type) and name.endswith("Config")
+                            and name not in ("JointConfig", "DHParams")):
+                        n = int(getattr(obj, "NUM_JOINTS", 6))
+                        break
+            except Exception:  # noqa: BLE001 — never block on config import
+                n = 6
+        self._expected_joints = n
+        return n
+
     def register_verb(self, name: str, handler: Callable[..., Any]) -> None:
         if name in self._verbs:
             raise ValueError(f"verb already registered: {name}")
@@ -172,11 +198,11 @@ class MoveItArmNode:
                 "code": "VENDOR_ERROR",
                 "msg": f"node is estopped: {self.estop_reason}",
             }
-        if len(joints) != 6:
+        if len(joints) != self.expected_joint_count:
             return {
                 "ok": False,
                 "code": "INVALID_PARAMS",
-                "msg": f"joints must have length 6, got {len(joints)}",
+                "msg": f"joints must have length {self.expected_joint_count}, got {len(joints)}",
             }
         try:
             self.begin_motion(control_source)

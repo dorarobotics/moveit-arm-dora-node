@@ -265,7 +265,7 @@ def main() -> int:
 
     gripper = MujocoGripper(emit=_emit_gripper)
     node = MoveItArmNode(
-        robot_id=robot_id, heartbeat_timeout_ms=hb,
+        robot_id=robot_id, robot_config_module=group, heartbeat_timeout_ms=hb,
         moveit_bridge=bridge, gripper=gripper,
     )
     node.install_common_verbs()
