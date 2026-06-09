@@ -62,7 +62,7 @@ if [ "$HEADLESS" = "1" ]; then
 else
   sed -e 's|MUJOCO_HEADLESS: "1"|MUJOCO_HEADLESS: "0"\n      DISPLAY: ":0"|' "$SRC" > "$YML"
 fi
-sed -i "/env: {.*ROBOT_CONFIG_MODULE/ s| }|, EXEC_INTERP_SPEED: \"${EXEC_INTERP_SPEED:-1.0}\" }|" "$YML"
+sed -i "/env: {.*ROBOT_CONFIG_MODULE/ s| }|, EXEC_INTERP_SPEED: \"${EXEC_INTERP_SPEED:-0.5}\" }|" "$YML"
 # Faster wall-clock motion: the executor steps once per tick, so a faster tick
 # = faster arm. 20 Hz (millis/50) looked sluggish even at interp_speed 0.6; bump
 # the trajectory_executor to 50 Hz (millis/20). mujoco_sim runs at 100 Hz so it

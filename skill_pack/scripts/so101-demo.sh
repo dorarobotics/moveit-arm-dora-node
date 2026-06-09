@@ -12,7 +12,7 @@
 #      bash ~/dorarobotics-test/so101-demo.sh
 #
 #  Knobs (env):
-#      EXEC_INTERP_SPEED=0.45   motion speed (higher = faster; 1.0 ~= 4x)
+#      EXEC_INTERP_SPEED=0.5    motion speed (higher = faster; 1.0 ~= 4x)
 #      GRIP_DWELL=3.0           pause (s) at the grasp so the close is visible
 #      HEADLESS=1               no viewer (for tuning)
 #      AUTO=1                   skip the ENTER prompt, pick immediately
@@ -33,7 +33,7 @@ URL=http://127.0.0.1:8768
 BALL=http://127.0.0.1:8779/ball
 LOG=/tmp/so101-demo.log
 HEADLESS="${HEADLESS:-0}"
-export EXEC_INTERP_SPEED="${EXEC_INTERP_SPEED:-0.45}"
+export EXEC_INTERP_SPEED="${EXEC_INTERP_SPEED:-0.5}"
 export GRIP_DWELL="${GRIP_DWELL:-3.0}"
 AUTO="${AUTO:-0}"
 
@@ -96,7 +96,9 @@ YAML
 
 echo "[so101-demo] starting dora daemon…"
 dora up >/dev/null 2>&1 || true
-for _ in $(seq 1 15); do dora list >/dev/null 2>&1 && break; dora up >/dev/null 2>&1; sleep 1; done
+# POLL only — re-running `dora up` here spawns a second daemon, and two daemons
+# co-spawn the dataflow (two windows). One up, then just wait for the coordinator.
+for _ in $(seq 1 20); do dora list >/dev/null 2>&1 && break; sleep 1; done
 dora list >/dev/null 2>&1 || die "dora coordinator never came up (try: dora destroy && dora up)"
 
 echo "[so101-demo] launching viewer + dataflow (log: $LOG)…"
