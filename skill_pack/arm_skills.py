@@ -66,6 +66,9 @@ PLACE_Z = cfg.f("place_z", 0.04) - GRASP_BIAS
 GRIP_OPEN_W = cfg.f("grip_open_w", 0.085)   # width that maps to "open"
 GRIP_CLOSE_W = cfg.f("grip_close_w", 0.0)   # width that maps to "closed"
 LIFT_ZS = cfg.vec("lift_zs", [0.07, 0.13, APPROACH_Z])  # staged-lift heights
+# Height the object must clear to call the grasp a success. Default fits the larger
+# arms (UR5e/reBot); a small arm (SO-101, ~0.1m max lift) sets this lower via manifest.
+LIFT_OK_Z = cfg.f("lift_ok_z", 0.10)
 
 _m = mujoco.MjModel.from_xml_path(os.environ["MODEL_NAME"])
 _d = mujoco.MjData(_m)
@@ -192,7 +195,7 @@ def pick_at(x: float, y: float) -> str:
         _move(q)
     _pick_xy = (x, y)
     b = _ball()
-    if b and b["z"] > 0.10:
+    if b and b["z"] > LIFT_OK_Z:
         return f"OK: grasped and lifted the object from ({x:.3f}, {y:.3f}); now holding it."
     return f"WARNING: lifted but object height is low (z={b['z']:.3f} m); grasp may have missed."
 

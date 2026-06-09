@@ -17,14 +17,15 @@
     0.0
   ],
   "grasp_bias": 0.0,
-  "grasp_z": 0.018,
+  "grasp_z": 0.012,
   "place_z": 0.025,
   "approach_z": 0.08,
   "lift_zs": [
-    0.035,
     0.05,
-    0.06
+    0.08,
+    0.10
   ],
+  "lift_ok_z": 0.06,
   "grip_open_w": 0.06,
   "grip_close_w": 0.0,
   "grip_dwell": 2.0,
