@@ -14,8 +14,10 @@ Env: OCTOS_PY_DIR (parent of the octos_py package), OLLAMA_BASE, OLLAMA_MODEL,
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.environ.get("OCTOS_PY_DIR", "/home/demo/dorarobotics-test"))
+sys.path.insert(0, os.path.dirname(__file__))  # finds the vendored octos_py/ here
+# Optional override to use an external octos_py checkout instead of the vendored one.
+if os.environ.get("OCTOS_PY_DIR"):
+    sys.path.insert(0, os.environ["OCTOS_PY_DIR"])
 
 import arm_skills  # noqa: E402
 import manifest as cfg  # noqa: E402  (skill_pack/manifest.py)
