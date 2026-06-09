@@ -77,6 +77,11 @@ cleanup() {
   echo "[rebot-agent] tearing down…"
   dora stop --grace 3 >/dev/null 2>&1 || true
   dora destroy >/dev/null 2>&1 || true
+  # Kill the real daemon/coordinator process names (a SPACE, not a hyphen) — dora
+  # destroy alone leaks them, and leftover daemons accumulate so multiple daemons
+  # co-spawn the dataflow -> two MuJoCo windows + :8768/:8779 port clashes.
+  pkill -9 -f "dora daemon" 2>/dev/null || true
+  pkill -9 -f "dora coordinator" 2>/dev/null || true
   pkill -f octos_spec_bridge 2>/dev/null || true
   pkill -f ball_state.py 2>/dev/null || true
   pkill -f dora_mujoco 2>/dev/null || true
@@ -87,13 +92,17 @@ echo "[rebot-agent] resetting dora daemon + killing node orphans + freeing ports
 pkill -9 -f "dora_mujoco|move_group_demo|moveit_arm_node|octos_spec_bridge|ball_state|trajectory_execution|planning_scene" 2>/dev/null || true
 fuser -k 8768/tcp 8779/tcp 2>/dev/null || true
 dora destroy >/dev/null 2>&1 || true
+pkill -9 -f "dora daemon" 2>/dev/null || true        # real names (SPACE) — else daemons accumulate
+pkill -9 -f "dora coordinator" 2>/dev/null || true   # and multiple daemons co-spawn -> two windows
 sleep 3
 fuser 8768/tcp >/dev/null 2>&1 && die "port 8768 still held after cleanup (kill it: fuser -k 8768/tcp)"
 dora up >/dev/null 2>&1 || true
 ready=0
-for _ in $(seq 1 15); do
+# POLL only — do NOT re-run `dora up` in the loop: a second `dora up` while the first
+# is still coming up spawns a SECOND daemon, and two daemons co-spawn the dataflow
+# (two MuJoCo windows). One `dora up`, then just wait for the coordinator.
+for _ in $(seq 1 20); do
   if dora list >/dev/null 2>&1; then ready=1; break; fi
-  dora up >/dev/null 2>&1 || true
   sleep 1
 done
 [ "$ready" = 1 ] || die "dora coordinator never came up (try: dora destroy && dora up)"
